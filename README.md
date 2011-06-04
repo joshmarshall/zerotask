@@ -8,6 +8,7 @@ Right now this is a really crappy prototype. I mean, really crappy. *really*
 Concepts
 --------
 Terms:
+
 * Dispatcher - Takes a JSON-RPC request in the current context and fires off handlers.
 * Server - A collection of polled ZMQ sockets with callbacks.
 * Broker - The dude responsible for handing out tasks and receiving results.
@@ -92,3 +93,9 @@ I would LIKE the AsyncClient to operate like this:
     print result # once again, 11
 
 ... but you know, I actually have to write all that first.
+
+Usage Tests
+-----------
+The "usage_tests" folder doesn't actually contain usable code, but rather an
+example of how I would like the client and node to "feel" in a terminal session
+or script file.
