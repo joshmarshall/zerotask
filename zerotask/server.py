@@ -2,13 +2,17 @@
 
 import zmq
 import logging
+from zerotask.dispatcher import Dispatcher
 
 class Server(object):
     """ The server base class """
 
-    def __init__(self):
+    namespace = ""
+
+    def __init__(self, **kwargs):
         self.poller = zmq.Poller()
         self.context = zmq.Context()
+        self.dispatcher = kwargs.get("dispatcher", Dispatcher.instance())
         self.callbacks = []
         self.break_loop = False
 
@@ -35,6 +39,18 @@ class Server(object):
         """ Adds a socket and callback to the poller and callbacks list """
         self.poller.register(socket, zmq.POLLIN)
         self.callbacks.append((socket, callback))
+
+    def add_handler(self, method, name=None):
+        """ just a wrapper for dispatcher.add_handler """
+        if not name:
+            # If name is not specified, generate one from 
+            # server namespace and method name
+            name = method.__name__
+            if self.namespace:
+                if not self.namespace.endswith("."):
+                    name = "."+name
+                name = self.namespace+name
+        self.dispatcher.add_handler(method, name)
 
     def setup(self):
         """ Should be overwritten by child classes """

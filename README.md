@@ -3,7 +3,7 @@ ZeroTask
 
 Intended to be a simple, extensible task system inspired by Celery but using only ZeroMQ+JSON-RPC (and eventually some kind of result store like Redis.)
 
-Right now this is a really crappy prototype. I mean, really crappy. *really*
+Right now this is a pretty crappy prototype, without proper workers in the node, etc.
 
 Concepts
 --------
@@ -12,7 +12,8 @@ Terms:
 * Dispatcher - Takes a JSON-RPC request in the current context and fires off handlers.
 * Server - A collection of polled ZMQ sockets with callbacks.
 * Broker - The dude responsible for handing out tasks and receiving results.
-* Node - The dude responsible for doing all the work.
+* Node - The dude responsible for handing all the work to the workers.
+* Worker - The dude responsible for handling a single task.
 * Client - The dude requesting the work.
 * Task - A function added to the dispatcher with an @task wrapper
 

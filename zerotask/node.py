@@ -4,17 +4,25 @@ import zmq
 import logging
 from zerotask.server import Server
 from zerotask.task import task
-from zerotask.dispatcher import Dispatcher
+from zerotask import jsonrpc
+from zerotask.exceptions import JSONRPCError
 import optparse
 
 class Node(Server):
     """ A simple example server """
 
+    namespace = "zerotask.node"
+
     def __init__(self, **kwargs):
         Server.__init__(self)
-        self.dispatcher = kwargs.get("dispatcher", Dispatcher.instance())
         self.broker_req_socket = None
         self.broker_sub_socket = None
+        self.node_id = kwargs.get("node_id", None)
+
+    def setup(self):
+        """ Sets up the handlers """
+        self.add_handler(self.task_ready)
+        self.add_handler(self.request_status)
 
     def start(self):
         """ Checks if broker is setup, then starts the loop """
@@ -29,44 +37,82 @@ class Node(Server):
         self.broker_req_socket.connect(broker_req_uri)
         self.broker_sub_socket.connect(broker_sub_uri)
         self.broker_sub_socket.setsockopt(zmq.SUBSCRIBE, "")
-        self.add_callback(self.broker_req_socket, self.dispatch)
+        # Getting node id from broker
+        connect_method = "zerotask.broker.node_connect"
+        connect_request = jsonrpc.request(connect_method)
+        self.broker_req_socket.send_json(connect_request)
+        connect_result = self.broker_req_socket.recv_json()
+        if connect_result.has_key("error"):
+            connect_error = connect_result["error"]
+            raise JSONRPCError(connect_error["code"],
+                               connect_error.get("message"))
+        node_id = connect_result.get("result")
+        if not node_id:
+            raise JSONRPCError(jsonrpc.INVALID_NODE_ID)
+        self.node_id = node_id
+        logging.info("New node id: %s", node_id)
         self.add_callback(self.broker_sub_socket, self.subscribe)
 
     def subscribe(self, message):
         """ Special dispatching """
-        # This is bad stuff, needs to go into custom dispatcher, etc.
-        if message['method'] == "node.task_ready":
-            method = message["params"]['method'] # bad, bad, bad...
-            task_id = message["params"]['id'] # so bad...
-            if self.dispatcher.has_handler(method):
-                self.broker_req_socket.send_json({"method": "node.task_request",
-                                                  "params": {"id": task_id}})
-        elif message["method"] == "node.request_status":
-            self.broker_req_socket.send_json({"method": "node.status",
-                                              "params": {"workers": 1}})
-
-    def dispatch(self, message):
-        """ Wrapper for dispatcher.dispatch """
         logging.info("Received message %s", message)
-        result = message.get("result")
-        if not message["result"]:
-            # We were not elected, or there was an issue...
-            return
-        if result.get("status"):
-            # letting us know the finished reporting went well
-            # CLEAR WORKER HERE
-            return
-        # worker logic goes here... should just start and return,
-        # using zmq.PUSH and zmq.PULL to monitor for finished statuses.
-        method = message["result"]["method"]
-        params = message["result"]["params"]
-        task_id = message["result"]["id"]
-        data = { "method": method, "params": params, "id": task_id }
-        result = self.dispatcher.dispatch(data)
-        response = {"method": "node.task_finished",
-                    "params": {"id": task_id, "result": result["result"]}}
-        logging.info("Sending message %s", response)
-        self.broker_req_socket.send_json(response)
+        result = self.dispatcher.dispatch(message)
+        if result:
+            self.broker_req_socket.send_json(result)
+            self.broker_req_socket.recv_json()
+
+    def task_ready(self, method, task_id):
+        """ Checks if node support the method, and responds if so. """
+        if not self.dispatcher.has_handler(method):
+            logging.info("Ignoring -- method %s is not supported.", method)
+            return None # we don't support that method
+        logging.info("Responding for new task %s", method)
+        req_params = dict(node_id=self.node_id, task_id=task_id)
+        req_method = "zerotask.broker.node_task_request"
+        request = jsonrpc.request(req_method, req_params)
+        self.broker_req_socket.send_json(request)
+        result = self.broker_req_socket.recv_json()
+        if result.has_key("error"):
+            raise JSONRPCError(result["error"]["code"],
+                               result["error"].get("message"))
+        task_result = result.get("result")
+        if not task_result:
+            return None # we were not elected
+        method = task_result['method']
+        params = task_result.get("params", [])
+        local_request = jsonrpc.request(method, params)
+        # This is where we'd fire off to workers eventually...
+        # This will be broken up here, and fire finished / failed
+        # asynchronously based on workers PUSH / PULL results
+        local_result = self.dispatcher.dispatch(local_request)
+        if not local_result:
+            logging.warning("Why do we have an empty result??")
+        result_method = "zerotask.broker.node_task_finished"
+        result_params = dict(node_id=self.node_id,
+                             task_id=task_id)
+        if local_result.has_key("error"):
+            result_method = "zerotask.broker.node_task_failed"
+            result_params["error"] = local_result["error"]
+        else:
+            result_params["result"] = local_result["result"]
+        result_req = jsonrpc.request(method=result_method,
+                                     params=result_params,
+                                     id=None) # a notification
+        self.broker_req_socket.send_json(result_req)
+        self.broker_req_socket.recv_json()
+
+    def request_status(self):
+        """ Calls broker with the current node status """
+        notify_method = "zerotask.broker.node_status"
+        notify_params = dict(node_id=self.node_id,
+                             workers=1)
+        notification = jsonrpc.request(method=notify_method,
+                                       params=notify_params,
+                                       id=None) # notification
+        logging.info("Sending status message: %s" % notification)
+        self.broker_req_socket.send_json(notification)
+        self.broker_req_socket.recv_json()
+        return None
 
 
 def main():
