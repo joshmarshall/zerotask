@@ -122,9 +122,8 @@ def main():
     logging.info("Starting client for subscribe port %d", opts.sub_port)
     client = Client(request_uri="tcp://%s:%s" % (opts.address, opts.req_port),
                     subscribe_uri="tcp://%s:%s" % (opts.address, opts.sub_port))
-    for i in range(1000):
-        print "Result for 5+6:", client.add(5, 6)
-        print "Result for 5-6:", client.subtract(5, 6)
+    print "Result for 5+6:", client.add(5, 6)
+    print "Result for 5-6:", client.subtract(5, 6)
 
 if __name__ == "__main__":
     main()
