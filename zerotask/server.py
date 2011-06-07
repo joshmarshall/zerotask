@@ -15,23 +15,27 @@ class Server(object):
         self.dispatcher = kwargs.get("dispatcher", Dispatcher.instance())
         self.callbacks = []
         self.break_loop = False
-
-    def config(self):
-        """ Overwrite in subclasses """
-        pass
+        self.setup()
 
     def loop(self):
         """ Polls and fires callbacks based on sockets """
-        self.setup()
-        logging.info("Starting server...")
-        while True:
-            socks = dict(self.poller.poll())
-            for socket, callback in self.callbacks:
-                if socks.get(socket) == zmq.POLLIN:
-                    data = socket.recv_json()
-                    callback(data)
-            if self.break_loop:
-                break
+        logging.info("Starting server %s...", self.namespace)
+        try:
+            while True:
+                socks = dict(self.poller.poll())
+                for socket, callback in self.callbacks:
+                    if socks.get(socket) == zmq.POLLIN:
+                        data = socket.recv_json()
+                        callback(data)
+                if self.break_loop:
+                    break
+        except KeyboardInterrupt:
+            logging.info("Caught keyboard interrupt...")
+            pass
+        finally:
+            logging.info("Shutting down server %s", self.namespace)
+            self.teardown()
+            return
 
     start = loop
 
@@ -53,6 +57,10 @@ class Server(object):
         self.dispatcher.add_handler(method, name)
 
     def setup(self):
+        """ Should be overwritten by child classes """
+        pass
+
+    def teardown(self):
         """ Should be overwritten by child classes """
         pass
 

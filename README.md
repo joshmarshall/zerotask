@@ -3,7 +3,7 @@ ZeroTask
 
 Intended to be a simple, extensible task system inspired by Celery but using only ZeroMQ+JSON-RPC (and eventually some kind of result store like Redis.)
 
-Right now this is a pretty crappy prototype, without proper workers in the node, etc.
+Right now this is a pretty crappy prototype, which doesn't issue tasks on connection, etc.
 
 Concepts
 --------
