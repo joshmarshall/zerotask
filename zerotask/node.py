@@ -25,6 +25,8 @@ class Node(Server):
 
     def setup(self):
         """ Sets up the handlers """
+        self.broker_req_socket = None
+        self.broker_sub_socket = None
         self._push_file = tempfile.NamedTemporaryFile(prefix="zerotaskq-")
         self._pull_file = tempfile.NamedTemporaryFile(prefix="zerotaskr-")
         self.push_socket = self.context.socket(zmq.PUSH)
